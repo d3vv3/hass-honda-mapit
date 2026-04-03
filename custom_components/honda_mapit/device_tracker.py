@@ -31,6 +31,7 @@ class HondaMapitTracker(HondaMapitVehicleEntity, TrackerEntity):
     """Tracker entity backed by the Mapit device snapshot."""
 
     _attr_translation_key = "location"
+    _attr_icon = "mdi:motorbike"
 
     def __init__(self, coordinator: HondaMapitCoordinator, vehicle_id: str) -> None:
         super().__init__(coordinator, vehicle_id)

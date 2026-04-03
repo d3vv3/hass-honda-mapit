@@ -28,6 +28,7 @@ BINARY_SENSORS: tuple[HondaMapitBinarySensorDescription, ...] = (
     HondaMapitBinarySensorDescription(
         key="moving",
         translation_key="moving",
+        icon="mdi:alarm-light-outline",
         value_fn=lambda entity: (
             entity.device_state.get("status") not in {None, "AT_REST"}
         ),
