@@ -3,10 +3,10 @@
   "name": "Honda Mapit",
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://github.com/devve/hass-honda-mapit",
+  "documentation": "https://github.com/d3vv3/hass-honda-mapit",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/devve/hass-honda-mapit/issues",
+  "issue_tracker": "https://github.com/d3vv3/hass-honda-mapit/issues",
   "loggers": ["custom_components.honda_mapit"],
   "requirements": [],
   "version": "0.1.0"
