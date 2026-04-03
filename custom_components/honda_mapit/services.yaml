@@ -1,0 +1,27 @@
+get_route_detail:
+  name: Get route detail
+  description: Fetch a route payload directly from Honda Mapit.
+  fields:
+    route_id:
+      required: true
+      example: rt-1234567890
+      selector:
+        text:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+export_route_gpx:
+  name: Export route GPX
+  description: Convert a Honda Mapit route into a GPX string.
+  fields:
+    route_id:
+      required: true
+      example: rt-1234567890
+      selector:
+        text:
+    config_entry_id:
+      required: false
+      selector:
+        text:

@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Honda Mapit",
+        "description": "Sign in with your Honda Mapit email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Honda Mapit",
+        "description": "Update the password for your Honda Mapit account.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Honda Mapit.",
+      "invalid_auth": "Invalid email or password.",
+      "unknown": "Unexpected error. Check the logs."
+    },
+    "abort": {
+      "already_configured": "This Honda Mapit account is already configured.",
+      "reauth_successful": "Honda Mapit was reconnected successfully."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "status": {
+        "name": "Status"
+      },
+      "odometer": {
+        "name": "Odometer"
+      },
+      "last_seen": {
+        "name": "Last seen"
+      },
+      "last_location": {
+        "name": "Last location"
+      },
+      "route_count": {
+        "name": "Route count"
+      },
+      "route_days": {
+        "name": "Route days"
+      },
+      "last_route_started": {
+        "name": "Last route started"
+      },
+      "last_route_distance": {
+        "name": "Last route distance"
+      },
+      "last_route_duration": {
+        "name": "Last route duration"
+      }
+    },
+    "binary_sensor": {
+      "moving": {
+        "name": "Moving"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Location"
+      }
+    }
+  },
+  "services": {
+    "get_route_detail": {
+      "name": "Get route detail",
+      "description": "Fetch a route payload directly from Honda Mapit.",
+      "fields": {
+        "route_id": {
+          "name": "Route ID",
+          "description": "Honda Mapit route identifier."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional config entry ID when multiple accounts are configured."
+        }
+      }
+    },
+    "export_route_gpx": {
+      "name": "Export route GPX",
+      "description": "Convert a Honda Mapit route into a GPX string.",
+      "fields": {
+        "route_id": {
+          "name": "Route ID",
+          "description": "Honda Mapit route identifier."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional config entry ID when multiple accounts are configured."
+        }
+      }
+    }
+  }
+}
