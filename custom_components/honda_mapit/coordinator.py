@@ -55,7 +55,6 @@ class HondaMapitCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except MapitConnectionError as err:
             raise UpdateFailed(str(err)) from err
 
-        snapshot = _merge_snapshot_preserving_device_state(self.data, snapshot)
         await self._async_sync_ws_tasks(snapshot)
         return snapshot
 
@@ -242,49 +241,13 @@ def _merge_device_state(
             continue
 
         merged_state = dict(device.get("state", {}))
-        merged_state.update(state)
+        for key, value in state.items():
+            if value is None:
+                continue
+            merged_state[key] = value
         merged_state.setdefault("deviceId", device_id)
         device["state"] = merged_state
         return snapshot
-
-    return snapshot
-
-
-def _merge_snapshot_preserving_device_state(
-    current: dict[str, Any] | None, incoming: dict[str, Any]
-) -> dict[str, Any]:
-    """Preserve last known device-state values when refresh data is null/missing."""
-
-    if not current:
-        return incoming
-
-    snapshot = deepcopy(incoming)
-    previous_vehicles = {
-        vehicle.get("id"): vehicle
-        for vehicle in current.get("vehicles", [])
-        if vehicle.get("id")
-    }
-
-    for vehicle in snapshot.get("vehicles", []):
-        previous_vehicle = previous_vehicles.get(vehicle.get("id"))
-        if previous_vehicle is None:
-            continue
-
-        previous_device = previous_vehicle.get("device") or {}
-        current_device = vehicle.get("device") or {}
-
-        previous_state = previous_device.get("state") or {}
-        current_state = dict(current_device.get("state") or {})
-
-        if not previous_state:
-            continue
-
-        for key, value in previous_state.items():
-            if key not in current_state or current_state[key] is None:
-                current_state[key] = value
-
-        current_device["state"] = current_state
-        vehicle["device"] = current_device
 
     return snapshot
 
