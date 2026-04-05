@@ -170,6 +170,9 @@ class HondaMapitCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             await self.async_request_refresh()
         except ConfigEntryAuthFailed:
+            _LOGGER.warning(
+                "Honda Mapit automatic auth recovery failed; starting Home Assistant reauth"
+            )
             self.config_entry.async_start_reauth(self.hass)
 
 

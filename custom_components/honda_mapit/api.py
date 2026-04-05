@@ -301,12 +301,26 @@ class MapitApiClient:
         if force_login or self._tokens is None:
             await self._login()
         elif self._tokens.expires_at - AUTH_REFRESH_MARGIN <= now:
-            await self._refresh_tokens()
+            try:
+                await self._refresh_tokens()
+            except MapitAuthError:
+                _LOGGER.info(
+                    "Honda Mapit token refresh failed; falling back to password login"
+                )
+                await self._login()
 
         if self._aws_credentials is None or self._aws_credentials.expiration <= now:
-            await self._refresh_aws_credentials()
+            try:
+                await self._refresh_aws_credentials()
+            except MapitAuthError:
+                _LOGGER.info(
+                    "Honda Mapit AWS credential refresh failed; retrying with fresh login"
+                )
+                await self._login()
 
     async def _login(self) -> None:
+        self._account = None
+        self._account_id = None
         payload = await self._cognito_idp_request(
             target="AWSCognitoIdentityProviderService.InitiateAuth",
             body={
