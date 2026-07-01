@@ -181,8 +181,8 @@ class MapitApiClient:
 
     async def async_get_snapshot(self) -> dict[str, Any]:
         """Fetch the current integration snapshot."""
-        account = await self.async_get_account()
-        summary = await self.async_get_account_summary(account["id"])
+        summary = await self.async_get_account_summary()
+        account = summary["account"]
         vehicles: list[dict[str, Any]] = summary.get("vehicles", [])
 
         vehicle_details: dict[str, dict[str, Any]] = {}
@@ -217,28 +217,32 @@ class MapitApiClient:
         return text
 
     async def async_get_account(self) -> dict[str, Any]:
-        """Fetch the account that matches the configured email."""
+        """Return the account for the authenticated user."""
         if self._account is not None:
             return self._account
 
-        accounts = await self._mapit_request(
-            "GET",
-            f"{self._runtime.core_api_url}/v1/accounts",
-            params={"email": self._email},
-        )
-        if not isinstance(accounts, list) or not accounts:
-            raise MapitAuthError("No account returned for configured email")
+        summary = await self.async_get_account_summary()
+        return summary["account"]
 
-        account = accounts[0]
-        self._account_id = account.get("id")
+    async def async_get_account_summary(self) -> dict[str, Any]:
+        """Fetch the summary for the authenticated account.
+
+        The Mapit backend resolves the account from the request credentials, so
+        no account id or email is needed. The previously used
+        ``/v1/accounts?email=`` lookup is now rejected with HTTP 403.
+        """
+        payload = await self._mapit_request(
+            "GET", f"{self._runtime.core_api_url}/v1/account-summary"
+        )
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("account"), dict
+        ):
+            raise MapitAuthError("No account returned for the authenticated user")
+
+        account = payload["account"]
         self._account = account
-        return account
-
-    async def async_get_account_summary(self, account_id: str) -> dict[str, Any]:
-        """Fetch the account summary payload."""
-        return await self._mapit_request(
-            "GET", f"{self._runtime.core_api_url}/v1/accounts/{account_id}/summary"
-        )
+        self._account_id = account.get("id")
+        return payload
 
     async def async_get_vehicle_detail(self, vehicle_id: str) -> dict[str, Any]:
         """Fetch the vehicle detail payload."""
