@@ -33,15 +33,32 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_BUNDLE_PATH_RE = re.compile(r'(?P<path>/assets/index\.[^"\']+\.js)')
+# Any hashed JS chunk emitted by the frontend build (e.g. ``main-CeqmBK3A.js``).
+_BUNDLE_PATH_RE = re.compile(r'/assets/[A-Za-z0-9._-]+\.js')
+# Both the legacy ``VITE_*`` build-time constants and the current Amplify Gen 2
+# config object (``userPoolId``/``userPoolClientId``/``identityPoolId`` and
+# ``sendRequest({endpoint:"..."})``) are supported so discovery survives either
+# frontend layout.
 _DISCOVERY_PATTERNS = {
-    "identity_pool_id": re.compile(r'VITE_COGNITO_IDENTITY_POOL_ID:"(?P<value>[^"]+)"'),
-    "user_pool_id": re.compile(r'VITE_COGNITO_USER_POOL_ID:"(?P<value>[^"]+)"'),
-    "app_client_id": re.compile(r'VITE_COGNITO_CLIENT_ID:"(?P<value>[^"]+)"'),
-    "core_api_url": re.compile(r'VITE_MAPIT_CORE_API:"(?P<value>[^"]+)"'),
-    "geo_api_url": re.compile(r'VITE_MAPIT_GEO_API:"(?P<value>[^"]+)"'),
-    "region": re.compile(r'Auth:\{region:"(?P<value>[^"]+)"'),
+    "identity_pool_id": re.compile(
+        r'(?:VITE_COGNITO_IDENTITY_POOL_ID|identityPoolId)\s*:\s*"(?P<value>[^"]+)"'
+    ),
+    "user_pool_id": re.compile(
+        r'(?:VITE_COGNITO_USER_POOL_ID|userPoolId)\s*:\s*"(?P<value>[^"]+)"'
+    ),
+    "app_client_id": re.compile(
+        r'(?:VITE_COGNITO_CLIENT_ID|userPoolClientId)\s*:\s*"(?P<value>[^"]+)"'
+    ),
+    "core_api_url": re.compile(
+        r'(?:VITE_MAPIT_CORE_API:"|endpoint:")(?P<value>https://core\.[^"]+)"'
+    ),
+    "geo_api_url": re.compile(
+        r'(?:VITE_MAPIT_GEO_API:"|endpoint:")(?P<value>https://geo\.[^"]+)"'
+    ),
 }
+# The region used to be an explicit ``region:"eu-west-1"`` field; it is no longer
+# emitted, so it is derived from a Cognito identifier when absent.
+_REGION_RE = re.compile(r'region\s*:\s*"(?P<value>[a-z]{2}-[a-z]+-\d)"')
 
 
 class MapitError(Exception):
@@ -151,13 +168,7 @@ class MapitApiClient:
             return self._runtime
 
         try:
-            html_text = await self._fetch_text(MAPIT_APP_URL)
-            bundle_url = extract_bundle_url(html_text)
-            if bundle_url is None:
-                raise MapitConnectionError("Could not locate Mapit frontend bundle")
-
-            bundle_text = await self._fetch_text(bundle_url)
-            discovered = extract_runtime_config(bundle_text)
+            discovered, bundle_url = await self._discover_from_frontend()
         except MapitError as err:
             if force:
                 raise
@@ -170,6 +181,25 @@ class MapitApiClient:
             )
 
         return self._runtime
+
+    async def _discover_from_frontend(self) -> tuple[MapitRuntimeConfig, str]:
+        """Locate a frontend bundle holding the runtime config and parse it."""
+        html_text = await self._fetch_text(MAPIT_APP_URL)
+        bundle_urls = extract_bundle_urls(html_text)
+        if not bundle_urls:
+            raise MapitConnectionError("Could not locate Mapit frontend bundle")
+
+        last_error: MapitError | None = None
+        for bundle_url in bundle_urls:
+            bundle_text = await self._fetch_text(bundle_url)
+            try:
+                return extract_runtime_config(bundle_text), bundle_url
+            except MapitConnectionError as err:
+                last_error = err
+
+        raise last_error or MapitConnectionError(
+            "Could not extract Mapit runtime config from any frontend bundle"
+        )
 
     @classmethod
     async def async_probe_runtime_config(
@@ -695,12 +725,30 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
-def extract_bundle_url(index_html: str) -> str | None:
-    """Extract the hashed frontend bundle URL from the app HTML."""
-    match = _BUNDLE_PATH_RE.search(index_html)
-    if match is None:
-        return None
-    return urljoin(MAPIT_APP_URL, html.unescape(match.group("path")))
+def extract_bundle_urls(index_html: str) -> list[str]:
+    """Return frontend bundle URLs from the app HTML, most likely config first.
+
+    The Amplify runtime config lives in the entry bundle (``main-*.js``), so the
+    entry/index chunks are tried before the lazily loaded ones.
+    """
+    seen: set[str] = set()
+    paths: list[str] = []
+    for match in _BUNDLE_PATH_RE.finditer(index_html):
+        path = match.group(0)
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+
+    def rank(path: str) -> int:
+        name = path.rsplit("/", 1)[-1]
+        if name.startswith("main"):
+            return 0
+        if name.startswith("index"):
+            return 1
+        return 2
+
+    paths.sort(key=rank)
+    return [urljoin(MAPIT_APP_URL, html.unescape(path)) for path in paths]
 
 
 def extract_runtime_config(bundle_text: str) -> MapitRuntimeConfig:
@@ -713,7 +761,7 @@ def extract_runtime_config(bundle_text: str) -> MapitRuntimeConfig:
         values[key] = match.group("value")
 
     return MapitRuntimeConfig(
-        region=values["region"],
+        region=_extract_region(bundle_text, values),
         user_pool_id=values["user_pool_id"],
         app_client_id=values["app_client_id"],
         identity_pool_id=values["identity_pool_id"],
@@ -722,6 +770,23 @@ def extract_runtime_config(bundle_text: str) -> MapitRuntimeConfig:
         devicestate_ws_url=_derive_ws_url(values["core_api_url"]),
         source="discovered",
     )
+
+
+def _extract_region(bundle_text: str, values: dict[str, str]) -> str:
+    """Return the AWS region, deriving it from a Cognito id when not explicit."""
+    match = _REGION_RE.search(bundle_text)
+    if match is not None:
+        return match.group("value")
+
+    # Cognito identifiers are prefixed with their region, e.g.
+    # ``eu-west-1_nHd6Er8N6`` or ``eu-west-1:<guid>``.
+    for source in (values.get("user_pool_id"), values.get("identity_pool_id")):
+        if source:
+            region = re.split(r"[_:]", source, maxsplit=1)[0]
+            if region:
+                return region
+
+    raise MapitConnectionError("Missing Mapit runtime field: region")
 
 
 def _derive_ws_url(core_api_url: str) -> str:
